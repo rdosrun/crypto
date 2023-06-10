@@ -7,7 +7,7 @@
 struct hash_struct{
     unsigned char hash[HASHLENGTH];
 };
-__uint32_t K[] =
+unsigned char K[] =
     {
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
         0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -82,38 +82,87 @@ struct hash_struct hash(char * value){
     int place = 0;
     int index = 0;
     struct hash_struct hashed_val;
-    char * tmp = malloc(sizeof(char)*(HASHLENGTH+1));
+    unsigned char WV [8]; // array of variables a-h
+    unsigned char H [8];
+
     for (int i =0;i<HASHLENGTH;i++) {
         hashed_val.hash[i] = 0;
-        tmp[i] =0;
     }
     int end = strlen(value);
-    while(index<end-HASHLENGTH){
+
+    for (size_t k = 0;k<8;k++){
+        WV = K[k];
+        H[k] = K[k];
+    }
+    while(index<(end+HASHLENGTH-1)){
         strncpy(tmp,value,HASHLENGTH);
-        for(int i =0;i<HASHLENGTH;i++){
-            hashed_val.hash[i] = hashed_val.hash[i]^tmp[i];
+        for(int i =0;i<16;i++){
+            hashed_val.hash[i] = hashed_val.hash[i];
         }
-        for (size_t j = 0; j < 80; j++) {
-            for(int i =0;i<HASHLENGTH;i++){
-                hashed_val.hash[i] = hashed_val.hash[i]^K[(i+j)%60];
+
+        for (size_t j = 16; j < 64; j++) {
+            hashed_val.hash[j] = sig1(hashed_val[j-2]) + hashed_val[j-7] + sig0(hashed_val[j-15]) + hashed_val[j-16];
+        }
+
+        for (size_t i =0; i<64;i++) {
+            unsigned char tmp1 = WV[7] + SIG1(WV[4])+ Ch(WV[4],WV[5],WV[6]) + K[i]+hashed_val.hash[i];
+            unsigned char tmp2 = SIG0(WV[0])+Maj(WV[0],WV[1],WV[2]);
+            for (size_t j =7;j>0;j--) {
+                if(j!=4){
+                    WV[i] = WV[i-1];
+                    continue;
+                }
+                WV[i] = WV[i-1]+tmp1;
             }
+            WV[0] = tmp1+tmp2;
+        }
+        for (size_t i = 0;i<8;i++) {
+            H[i] = WV[i]+H[i];
         }
         index = ++place*HASHLENGTH;
     }
 
-    strncpy(tmp,value,end-index);
-    for (size_t j = 0; j < 80; j++) {
-        for(int i =0;i<HASHLENGTH;i++){
-            if(j==0){
-                hashed_val.hash[i] = hashed_val.hash[i]^K[(i+j)%60]^tmp[i];
-            }else{
-                hashed_val.hash[i] = hashed_val.hash[i]^K[(i+j)%60];
-            }
-        }
-    }
     return hashed_val;
 }
 
 
+unsigned char sig0(__uint32_t x)
+{
+	return (rotr(x, 7) ^ rotr(x, 18) ^ shr(x, 3));
+};
 
+unsigned char sig1(__uint32_t x)
+{
+	return (rotr(x, 17) ^ rotr(x, 19) ^ shr(x, 10));
+};
+
+unsigned char rotr(__uint32_t x, __uint16_t a)
+{
+	return (x >> a) | (x << (32 - a));
+};
+
+unsigned char shr(__uint32_t x, __uint16_t b)
+{
+	return (x >> b);
+};
+
+unsigned char SIG0(__uint32_t x)
+{
+	return (rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22));
+};
+
+unsigned char SIG1(__uint32_t x)
+{
+	return (rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25));
+};
+
+unsigned char Ch(__uint32_t x,__uint32_t y,__uint32_t z)
+{
+	return ((x & y) ^ (~(x)&z));
+};
+
+unsigned char Maj(__uint32_t x,__uint32_t y,__uint32_t z)
+{
+	return ((x & y) ^ (x & z) ^ (y & z));
+};
 
