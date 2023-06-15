@@ -5,9 +5,10 @@
 
 #define HASHLENGTH  64
 struct hash_struct{
-    unsigned char hash[HASHLENGTH];
+    __uint32_t hash[HASHLENGTH];
 };
-unsigned char K[] =
+#define byteSwap32(x) (((x) >> 24) | (((x)&0x00FF0000) >> 8) | (((x)&0x0000FF00)<< 8) | ((x) << 24))
+__uint32_t K[] =
     {
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
         0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -28,13 +29,24 @@ unsigned char K[] =
     };
 struct hash_struct hash(char * value);
 struct hash_struct shift_right(char * value);
+__uint32_t sig0(__uint32_t x);
+__uint32_t sig1(__uint32_t x);
+
+__uint32_t rotr(__uint32_t n, __uint16_t x);
+__uint32_t shr(__uint32_t n, __uint16_t x);
+
+__uint32_t SIG0(__uint32_t x);
+__uint32_t SIG1(__uint32_t x);
+
+__uint32_t Ch(__uint32_t x,__uint32_t y,__uint32_t z);
+__uint32_t Maj(__uint32_t x,__uint32_t y,__uint32_t z);
 
 
 int main(int argc, char *argv[])
 {
     struct hash_struct value;
-    char * s = malloc( sizeof(char) *2000);
-    fgets(s,8*2000,stdin);
+    char * s = "abc";//malloc( sizeof(char) *2000);
+    //fgets(s,8*2000,stdin);
     value = hash(s);
 
     printf("this is the hash:");
@@ -76,92 +88,203 @@ struct hash_struct pad(char * word){
     }
     return ret_val;
 }
-
+char * int_to_char(__uint32_t x){
+    char * t =malloc(sizeof(char)*4);
+    for (int i =0;i<4;i++) {
+        t[i] = x >> (24-(8*i));
+    }
+    return t;
+}
 
 struct hash_struct hash(char * value){
     int place = 0;
     int index = 0;
     struct hash_struct hashed_val;
-    unsigned char WV [8]; // array of variables a-h
-    unsigned char H [8];
+    __uint32_t WV [8]; // array of variables a-h
+    __uint32_t H[8] = {
+        0x6a09e667,
+        0xbb67ae85,
+        0x3c6ef372,
+        0xa54ff53a,
+        0x510e527f,
+        0x9b05688c,
+        0x1f83d9ab,
+        0x5be0cd19
+    };
 
     for (int i =0;i<HASHLENGTH;i++) {
         hashed_val.hash[i] = 0;
     }
-    int end = strlen(value);
 
-    for (size_t k = 0;k<8;k++){
-        WV = K[k];
-        H[k] = K[k];
+
+    //the padding needs to have make the message of size n where n%block_size=0
+    __uint64_t end = strlen(value);
+    unsigned char tmp [((end/64)+1)*64];
+    for (int i = strlen(tmp)-1;i>=0;i--) {
+        tmp[i]=0;
     }
-    while(index<(end+HASHLENGTH-1)){
-        strncpy(tmp,value,HASHLENGTH);
+    strcat(tmp,value);
+    for (int i =end;i<((end/64)+1)*64;i++) {
+        tmp[i]=0;
+    }
+    tmp[48]=0;
+    printf("%i\n",((end/64)+1)*64);
+    for (int i = 7;i>=0;i--) {
+        unsigned char t = (((strlen(value))*8)>>(8*i))%256;
+        //printf("%X\n",t);
+        tmp[((end/64)+1)*64-(i+1)] = t;
+        printf("padding: %X %i\n",tmp[((end/64)+1)*64-1],t);
+    }
+    tmp[end] = 128;
+    //tmp[end+1] = 128;
+    for (size_t k = 0;k<8;k++){
+        //WV[k] = K[k];
+        //H[k] = K[k];
+    }
+
+    end = ((end/64)+1)*64;
+    printf("messeage prior: %s\n",tmp);
+    //printf("T1 %x\n",tmp[0]);
+    while(index<end){
+        printf("index value: %i,%i\n\n\n",index,end);
         for(int i =0;i<16;i++){
-            hashed_val.hash[i] = hashed_val.hash[i];
+            //hashed value is a uint32 tmp is a char load the proper amount of bits into the uint32
+            //should be about 4 tmp char to one hashed_val'
+            for (int j = index+(i*4);j<index+(i*4)+4;j++) {
+                //printf("T1: %s\n",tmp[0]);
+                hashed_val.hash[i] = hashed_val.hash[i]<<8;
+                hashed_val.hash[i] =hashed_val.hash[i]+tmp[j];
+                //printf("%i,%X \n",i,tmp[j]);
+            }
+            /*if(i!=15){
+                hashed_val.hash[i] = byteSwap32(hashed_val.hash[i]);
+            }
+            if(i==0){
+                hashed_val.hash[i] = hashed_val.hash[i] +(1<<24);
+            }*/
+            printf("hashed val: %08llX,\n",hashed_val.hash[i]);
+        }
+        //printf("\n");
+
+        for (int j=16; j<64; j++)
+        {
+            // Step 1
+            hashed_val.hash[j] = sig1(hashed_val.hash[j-2]) + hashed_val.hash[j-7] + sig0(hashed_val.hash[j-15]) + hashed_val.hash[j-16];
         }
 
-        for (size_t j = 16; j < 64; j++) {
-            hashed_val.hash[j] = sig1(hashed_val[j-2]) + hashed_val[j-7] + sig0(hashed_val[j-15]) + hashed_val[j-16];
+        // Initalize a..h
+        // Step 2
+        __uint32_t a=H[0];
+        __uint32_t b=H[1];
+        __uint32_t c=H[2];
+        __uint32_t d=H[3];
+        __uint32_t e=H[4];
+        __uint32_t f=H[5];
+        __uint32_t g=H[6];
+        __uint32_t h=H[7];
+
+        for (int tt = 0;tt<8;tt++) {
+            printf("%08llx\n",H[tt]);
+        }
+
+        // For loop
+        // Step 3
+        for(int j = 0; j < 64; j++)
+        {
+            // Creating new variables
+            __uint32_t T1 = h + SIG1(e) + Ch(e,f,g) + K[j] + hashed_val.hash[j];
+            __uint32_t T2 = SIG0(a) + Maj(a,b,c);
+            h = g;
+            g = f;
+            f = e;
+            e = d + T1;
+            d = c;
+            c = b;
+            b = a;
+            a = T1 + T2;
+        }
+
+        // Step 4
+        H[0] = a + H[0];
+        H[1] = b + H[1];
+        H[2] = c + H[2];
+        H[3] = d + H[3];
+        H[4] = e + H[4];
+        H[5] = f + H[5];
+        H[6] = g + H[6];
+        H[7] = h+ H[7];
+       /* for (size_t j = 16; j < 64; j++) {
+            hashed_val.hash[j] = sig1(hashed_val.hash[j-2]) + hashed_val.hash[j-7] + sig0(hashed_val.hash[j-15]) + hashed_val.hash[j-16];
         }
 
         for (size_t i =0; i<64;i++) {
-            unsigned char tmp1 = WV[7] + SIG1(WV[4])+ Ch(WV[4],WV[5],WV[6]) + K[i]+hashed_val.hash[i];
-            unsigned char tmp2 = SIG0(WV[0])+Maj(WV[0],WV[1],WV[2]);
+            __uint32_t tmp1 = WV[7] + SIG1(WV[4])+ Ch(WV[4],WV[5],WV[6]) + K[i]+hashed_val.hash[i];
+            __uint32_t tmp2 = SIG0(WV[0])+Maj(WV[0],WV[1],WV[2]);
             for (size_t j =7;j>0;j--) {
                 if(j!=4){
-                    WV[i] = WV[i-1];
-                    continue;
+                    WV[j] = WV[j-1];
+                }else{
+                    WV[j] = WV[j-1]+tmp1;
                 }
-                WV[i] = WV[i-1]+tmp1;
             }
             WV[0] = tmp1+tmp2;
         }
         for (size_t i = 0;i<8;i++) {
             H[i] = WV[i]+H[i];
-        }
-        index = ++place*HASHLENGTH;
+        }*/
+        index = ++place*(4*HASHLENGTH);
     }
 
+    printf("this is what the hash should be:\n");
+    for (size_t i = 0;i<1;i++) {
+        for (int j=0;j<8;j++) {
+            printf("%08llX",H[j]);
+        }
+        for (int j =0;j<8;j++) {
+            hashed_val.hash[j] = H[j];
+        }
+    }
+    printf("\n");
     return hashed_val;
 }
 
 
-unsigned char sig0(__uint32_t x)
+__uint32_t sig0(__uint32_t x)
 {
 	return (rotr(x, 7) ^ rotr(x, 18) ^ shr(x, 3));
 };
 
-unsigned char sig1(__uint32_t x)
+__uint32_t sig1(__uint32_t x)
 {
 	return (rotr(x, 17) ^ rotr(x, 19) ^ shr(x, 10));
 };
 
-unsigned char rotr(__uint32_t x, __uint16_t a)
+__uint32_t rotr(__uint32_t x, __uint16_t a)
 {
 	return (x >> a) | (x << (32 - a));
 };
 
-unsigned char shr(__uint32_t x, __uint16_t b)
+__uint32_t shr(__uint32_t x, __uint16_t b)
 {
 	return (x >> b);
 };
 
-unsigned char SIG0(__uint32_t x)
+__uint32_t SIG0(__uint32_t x)
 {
 	return (rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22));
 };
 
-unsigned char SIG1(__uint32_t x)
+__uint32_t SIG1(__uint32_t x)
 {
 	return (rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25));
 };
 
-unsigned char Ch(__uint32_t x,__uint32_t y,__uint32_t z)
+__uint32_t Ch(__uint32_t x,__uint32_t y,__uint32_t z)
 {
 	return ((x & y) ^ (~(x)&z));
 };
 
-unsigned char Maj(__uint32_t x,__uint32_t y,__uint32_t z)
+__uint32_t Maj(__uint32_t x,__uint32_t y,__uint32_t z)
 {
 	return ((x & y) ^ (x & z) ^ (y & z));
 };
